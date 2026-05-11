@@ -3,7 +3,6 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sql } from '@vercel/postgres';
-import { PETS } from '../src/data/mockData';
 
 type UserRow = {
   id: string;
@@ -14,7 +13,20 @@ type UserRow = {
   created_at?: string;
 };
 
-type PetRow = (typeof PETS)[number] & { created_at?: string };
+type PetRow = {
+  id: string;
+  name: string;
+  age: string;
+  breed: string;
+  gender: string;
+  tags: string[];
+  location: string;
+  description: string;
+  image: string;
+  type: 'cat' | 'dog';
+  urgent: boolean;
+  created_at?: string;
+};
 
 type ApplicationRow = {
   id: string;
@@ -78,88 +90,6 @@ type ReportRow = {
 const DEFAULT_AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCtg2VttarLLNwqOcYuy2-jmU7KYBFATB8a5YXDjufFWtO0_Wu6O57ujSke5WB1FIJ1D-grqDPH5n4j_1d97v53obwY1yk3PFX1aY3UTYfEEvEQNbTJNN-EGx2CHeKuB-ASL5jg5pyoU5wXt7yf-seDp9y2v2XOPmVApY4qjx51hzKEz4qN80fY3U-O3ePjV12BFQiaZFjioGYlzpCsIw4Tbenlsmi1xL1HusCCOvYmloZe3Y4nsGhFFZrkzRiwlF-dNgRNUYCvc-M';
 
-const SEED_EVENTS = [
-  {
-    id: 'spring-adoption-gala',
-    title: '春日领养嘉年华',
-    category: '领养',
-    summary: '在樱花树下，为它们寻找一个温暖的家。',
-    description: '现场会有待领养犬猫、志愿者咨询、基础照护讲座和领养审核说明。适合第一次了解领养流程的家庭参加。',
-    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD6dpf_SldRo5VMb1aGvjqBuC_kVwHgGyCGirjCySZFN-LlGJJLm0ZRuVmWe1x1-Z0xuLwI4NdtFKZBg-qT4Nd35baZhkwe4BTa7qpqZbGcrPMpRZ97k_VixUAi4RZqPNBJV55fITsfdDvcfNjGDFFh37sf5TnOWSAjyWeesV36hg6lo_9fGNMkEl6VxROiO5yjmP6CCaEuwkBiTSNd2sfxD6Sxw0gOY73RrfZuvD93aPqQMvBDnYz7SLWo0yKLWAqJWEBlIueOCec',
-    location: '中央公园樱花广场',
-    starts_at: '2026-05-15T14:00:00+08:00',
-    capacity: 80,
-  },
-  {
-    id: 'tnr-workshop',
-    title: '流浪猫 TNR 讲座',
-    category: '训练',
-    summary: '学习安全诱捕、绝育和放归的社区协作流程。',
-    description: '兽医与资深志愿者会拆解 TNR 的工具准备、风险识别、术后护理和邻里沟通要点。',
-    image: '',
-    location: '社区动物服务站',
-    starts_at: '2026-05-18T10:00:00+08:00',
-    capacity: 40,
-  },
-  {
-    id: 'volunteer-meetup',
-    title: '志愿者交流会',
-    category: '志愿者',
-    summary: '认识附近救助伙伴，加入投喂、转运和回访小组。',
-    description: '适合新志愿者了解任务排班、救助边界、沟通模板和基础安全规范。',
-    image: '',
-    location: '幸福社区活动室',
-    starts_at: '2026-05-20T18:00:00+08:00',
-    capacity: 50,
-  },
-  {
-    id: 'pet-portrait-fundraiser',
-    title: '宠物肖像义卖',
-    category: '见面会',
-    summary: '用一张肖像支持流浪动物医疗基金。',
-    description: '摄影师现场拍摄宠物肖像，义卖收入将用于紧急医疗和绝育补贴。',
-    image: '',
-    location: '月光咖啡馆',
-    starts_at: '2026-05-22T09:00:00+08:00',
-    capacity: 60,
-  },
-];
-
-const SEED_REPORTS = [
-  {
-    title: '小乐 (Lele)',
-    report_type: '丢失',
-    species: '比格犬',
-    location: '朝阳区 幸福小区东门附近',
-    happened_at: '2026-05-10T13:30:00+08:00',
-    description: '小乐从小区东门附近走失，戴红色项圈，胆子小但会回应名字。请看到后不要追赶，先拍照联系主人。',
-    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA2mjFj-OBadwlFMxoZNvC8hEjby10oeVHKchbHhaO0VeOxVtj51E2NYZxGHvJz6E0g5lBPhGlLXgHGTkKHj8EjXBPdDvGxbsXWUgVjQq_4lMKjqS-UrSndYDY2vx2ti2w-AxJL-O1T2vA2KbUvJAZiqx3B1f-Fp6sFPNCW4r0lGJSw-xjm_eOBDKqmeej_Se03loxiiUOEs0aONwqXP290oXEtgraTsuvReG63BqP2nP8O7Uf6ubw5YkXgk7yTc7QyN37PvmrUTEQ',
-    reward: 500,
-    status: 'open',
-  },
-  {
-    title: '橘色田园猫',
-    report_type: '目击',
-    species: '中华田园猫',
-    location: '海淀区 翠微公园南门',
-    happened_at: '2026-05-10T10:00:00+08:00',
-    description: '在公园南侧灌木丛看到，颈部带有红色项圈，看起来健康但有些怕人。',
-    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCMfNSOXUQS3J0rVvDUBLC1DzQDmdsZ4qNXUrLDZ9kfNqQzV0zzFMxjN6bK-VaKT7M6N9ALY6wJcNHd3OMO2NrfEPiawm5XfUxfXCrU5sHf3EdzQkTGxAijqsOUG-EeI1EsOkUxjR7hx4S6STfu_uVdZoNUJB8Hp0XsPpQ-gYFzB_SPKmuQQ_XgBGlRiPnZKOVKSFoI-CcQJGmRBdFjJKOi8Kgn5fWrccRM8TqV3_vMzRgRoySd27yniAVwY-yKsFxj8pcuiFMODvE',
-    reward: null,
-    status: 'open',
-  },
-  {
-    title: '团聚：阿布 (Abu)',
-    report_type: '已团聚',
-    species: '金毛寻回犬',
-    location: '望京西路',
-    happened_at: '2026-05-08T20:00:00+08:00',
-    description: '感谢平台和社区志愿者，阿布在丢失三天后平安回家。',
-    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAwO6SHbGFEifO_j8Ud9j0kCSUJVGXiI-Wu51vx8lU_2X4gELV2wT9s_C4CWBl8c8gtUDoFcqQxnF5IkUSIbZtj8ulZ9_GI0Ja12Sw1vQzldzPW6ADIOlYMNBjkwKwCpJY_9m3qZzMkuG0oRCXq2wqh4R3kQWTKSP81_VZo7aGPS7Y3jwEJqZwOyRvsQc0OC2JtGSpvQmf9u6PMhj9TYN87eDe1d0VxHPBCQ9GJrwlLOXvV9bLAufXWgdYRhOKql5g-xTlY8b6Rj5o',
-    reward: null,
-    status: 'resolved',
-  },
-];
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
@@ -274,40 +204,6 @@ function normalizeReport(row: ReportRow) {
   };
 }
 
-async function ensureSeedPets() {
-  const { rows: existing } = await sql`SELECT id FROM pets LIMIT 1`;
-  if (existing.length > 0) return;
-  for (const pet of PETS) {
-    await sql`
-      INSERT INTO pets (id, name, age, breed, gender, tags, location, description, image, type, urgent)
-      VALUES (${pet.id}, ${pet.name}, ${pet.age}, ${pet.breed}, ${pet.gender}, ${pet.tags as unknown as string}, ${pet.location}, ${pet.description}, ${pet.image}, ${pet.type}, ${pet.urgent})
-      ON CONFLICT (id) DO NOTHING
-    `;
-  }
-}
-
-async function ensureSeedEvents() {
-  const { rows: existing } = await sql`SELECT id FROM events LIMIT 1`;
-  if (existing.length > 0) return;
-  for (const event of SEED_EVENTS) {
-    await sql`
-      INSERT INTO events (id, title, category, summary, description, image, location, starts_at, capacity)
-      VALUES (${event.id}, ${event.title}, ${event.category}, ${event.summary}, ${event.description}, ${event.image}, ${event.location}, ${event.starts_at}, ${event.capacity})
-      ON CONFLICT (id) DO NOTHING
-    `;
-  }
-}
-
-async function ensureSeedReports() {
-  const { rows: existing } = await sql`SELECT id FROM reports LIMIT 1`;
-  if (existing.length > 0) return;
-  for (const report of SEED_REPORTS) {
-    await sql`
-      INSERT INTO reports (title, report_type, species, location, happened_at, description, image, reward, status)
-      VALUES (${report.title}, ${report.report_type}, ${report.species}, ${report.location}, ${report.happened_at}, ${report.description}, ${report.image}, ${report.reward}, ${report.status})
-    `;
-  }
-}
 
 async function findOrCreateUser(input: { email?: string; phone?: string; name?: string }) {
   const email = input.email?.trim().toLowerCase();
@@ -393,7 +289,6 @@ app.post('/api/auth/register', async (req, res) => {
 
 app.get('/api/pets', async (_, res) => {
   try {
-    await ensureSeedPets();
     const { rows: pets } = await sql<PetRow>`SELECT * FROM pets ORDER BY created_at ASC`;
     res.json({ pets });
   } catch (error) {
@@ -403,7 +298,6 @@ app.get('/api/pets', async (_, res) => {
 
 app.get('/api/pets/:id', async (req, res) => {
   try {
-    await ensureSeedPets();
     const { rows } = await sql<PetRow>`SELECT * FROM pets WHERE id = ${req.params.id} LIMIT 1`;
     if (!rows[0]) return res.status(404).json({ error: 'Pet not found' });
     res.json({ pet: rows[0] });
@@ -494,7 +388,6 @@ app.post('/api/applications', async (req, res) => {
 
 app.get('/api/events', async (req, res) => {
   try {
-    await ensureSeedEvents();
     const category = String(req.query.category || '');
     let rows: EventRow[];
     if (category && category !== '全部') {
@@ -510,7 +403,6 @@ app.get('/api/events', async (req, res) => {
 
 app.get('/api/events/:id', async (req, res) => {
   try {
-    await ensureSeedEvents();
     const { rows } = await sql<EventRow>`SELECT * FROM events WHERE id = ${req.params.id} LIMIT 1`;
     if (!rows[0]) return res.status(404).json({ error: 'Event not found' });
     res.json({ event: normalizeEvent(rows[0]) });
@@ -548,7 +440,6 @@ app.post('/api/events/:id/register', async (req, res) => {
 
 app.get('/api/reports', async (req, res) => {
   try {
-    await ensureSeedReports();
     const filter = String(req.query.filter || '');
     let rows: ReportRow[];
     if (filter === '丢失宠物') {
@@ -568,7 +459,6 @@ app.get('/api/reports', async (req, res) => {
 
 app.get('/api/reports/:id', async (req, res) => {
   try {
-    await ensureSeedReports();
     const { rows } = await sql<ReportRow>`SELECT * FROM reports WHERE id = ${req.params.id} LIMIT 1`;
     if (!rows[0]) return res.status(404).json({ error: 'Report not found' });
     res.json({ report: normalizeReport(rows[0]) });
