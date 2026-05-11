@@ -1,3 +1,5 @@
+'use client';
+
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { api, AppUser, Application, AuthPayload, Pet } from '../lib/api';
 
@@ -20,6 +22,7 @@ const SESSION_KEY = 'stray-stories-user';
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(() => {
+    if (typeof window === 'undefined') return null;
     const raw = localStorage.getItem(SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
   });
@@ -75,7 +78,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { user } = await api.register(payload.phone || payload.email ? payload : { phone: 'demo-user' });
     persistUser(user);
   };
-  
+
   const logout = () => {
     setUser(null);
     localStorage.removeItem(SESSION_KEY);
