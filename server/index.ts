@@ -2,8 +2,8 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sql } from '@vercel/postgres';
 import { PETS } from '../src/data/mockData';
-import { db } from './supabaseRest';
 
 type UserRow = {
   id: string;
@@ -182,7 +182,7 @@ function sendError(res: express.Response, error: unknown) {
 }
 
 function isMissingTableError(error: unknown) {
-  return error instanceof Error && error.message.includes('PGRST205');
+  return error instanceof Error && error.message.includes('does not exist');
 }
 
 async function runOptionalDbTask(task: () => Promise<void>, label: string) {
@@ -190,7 +190,7 @@ async function runOptionalDbTask(task: () => Promise<void>, label: string) {
     await task();
   } catch (error) {
     if (isMissingTableError(error)) {
-      console.warn(`${label} skipped because the related Supabase table is missing.`);
+      console.warn(`${label} skipped because the related table is missing.`);
       return;
     }
     throw error;
@@ -275,38 +275,38 @@ function normalizeReport(row: ReportRow) {
 }
 
 async function ensureSeedPets() {
-  const existing = await db.select<PetRow>('pets', { select: 'id', limit: 1 });
+  const { rows: existing } = await sql`SELECT id FROM pets LIMIT 1`;
   if (existing.length > 0) return;
-
-  await db.upsert<PetRow>(
-    'pets',
-    PETS.map((pet) => ({
-      id: pet.id,
-      name: pet.name,
-      age: pet.age,
-      breed: pet.breed,
-      gender: pet.gender,
-      tags: pet.tags,
-      location: pet.location,
-      description: pet.description,
-      image: pet.image,
-      type: pet.type,
-      urgent: pet.urgent,
-    })),
-    { on_conflict: 'id' }
-  );
+  for (const pet of PETS) {
+    await sql`
+      INSERT INTO pets (id, name, age, breed, gender, tags, location, description, image, type, urgent)
+      VALUES (${pet.id}, ${pet.name}, ${pet.age}, ${pet.breed}, ${pet.gender}, ${pet.tags as unknown as string}, ${pet.location}, ${pet.description}, ${pet.image}, ${pet.type}, ${pet.urgent})
+      ON CONFLICT (id) DO NOTHING
+    `;
+  }
 }
 
 async function ensureSeedEvents() {
-  const existing = await db.select<EventRow>('events', { select: 'id', limit: 1 });
+  const { rows: existing } = await sql`SELECT id FROM events LIMIT 1`;
   if (existing.length > 0) return;
-  await db.upsert<EventRow>('events', SEED_EVENTS, { on_conflict: 'id' });
+  for (const event of SEED_EVENTS) {
+    await sql`
+      INSERT INTO events (id, title, category, summary, description, image, location, starts_at, capacity)
+      VALUES (${event.id}, ${event.title}, ${event.category}, ${event.summary}, ${event.description}, ${event.image}, ${event.location}, ${event.starts_at}, ${event.capacity})
+      ON CONFLICT (id) DO NOTHING
+    `;
+  }
 }
 
 async function ensureSeedReports() {
-  const existing = await db.select<ReportRow>('reports', { select: 'id', limit: 1 });
+  const { rows: existing } = await sql`SELECT id FROM reports LIMIT 1`;
   if (existing.length > 0) return;
-  await db.insert<ReportRow>('reports', SEED_REPORTS);
+  for (const report of SEED_REPORTS) {
+    await sql`
+      INSERT INTO reports (title, report_type, species, location, happened_at, description, image, reward, status)
+      VALUES (${report.title}, ${report.report_type}, ${report.species}, ${report.location}, ${report.happened_at}, ${report.description}, ${report.image}, ${report.reward}, ${report.status})
+    `;
+  }
 }
 
 async function findOrCreateUser(input: { email?: string; phone?: string; name?: string }) {
@@ -318,78 +318,55 @@ async function findOrCreateUser(input: { email?: string; phone?: string; name?: 
     throw new Error('Email or phone is required.');
   }
 
-  const query = email
-    ? { select: '*', email: `eq.${email}`, limit: 1 }
-    : { select: '*', phone: `eq.${phone}`, limit: 1 };
+  let existing: UserRow[] = [];
+  if (email) {
+    const { rows } = await sql<UserRow>`SELECT * FROM app_users WHERE email = ${email} LIMIT 1`;
+    existing = rows;
+  } else {
+    const { rows } = await sql<UserRow>`SELECT * FROM app_users WHERE phone = ${phone!} LIMIT 1`;
+    existing = rows;
+  }
 
-  const existing = await db.select<UserRow>('app_users', query);
   if (existing[0]) {
     await runOptionalDbTask(() => ensureNotificationPreferences(existing[0].id), 'Notification preferences init');
     await runOptionalDbTask(() => ensureSeedNotifications(existing[0].id), 'Notification seed');
     return existing[0];
   }
 
-  const inserted = await db.insert<UserRow>('app_users', [
-    {
-      email: email || null,
-      phone: phone || null,
-      name,
-      avatar: DEFAULT_AVATAR,
-    },
-  ]);
+  const { rows: inserted } = await sql<UserRow>`
+    INSERT INTO app_users (email, phone, name, avatar)
+    VALUES (${email || null}, ${phone || null}, ${name}, ${DEFAULT_AVATAR})
+    RETURNING *
+  `;
   await runOptionalDbTask(() => ensureNotificationPreferences(inserted[0].id), 'Notification preferences init');
   await runOptionalDbTask(() => ensureSeedNotifications(inserted[0].id), 'Notification seed');
   return inserted[0];
 }
 
 async function ensureNotificationPreferences(userId: string) {
-  await db.upsert<NotificationPreferenceRow>(
-    'notification_preferences',
-    [{ user_id: userId, adoption_updates: true, sighting_reports: false }],
-    { on_conflict: 'user_id' }
-  );
+  await sql`
+    INSERT INTO notification_preferences (user_id, adoption_updates, sighting_reports)
+    VALUES (${userId}, true, false)
+    ON CONFLICT (user_id) DO NOTHING
+  `;
 }
 
 async function ensureSeedNotifications(userId: string) {
-  const existing = await db.select<NotificationRow>('notifications', {
-    select: 'id',
-    user_id: `eq.${userId}`,
-    limit: 1,
-  });
+  const { rows: existing } = await sql`SELECT id FROM notifications WHERE user_id = ${userId} LIMIT 1`;
   if (existing.length > 0) return;
 
-  await db.insert<NotificationRow>('notifications', [
-    {
-      user_id: userId,
-      category: '申请',
-      title: 'Luna 的领养申请',
-      body: '你的领养申请已提交，志愿者会在 24 小时内完成初审。',
-      image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB8pgi8UcYwYoJoko8KgMwNpRqqmoQ95U6YMYNJNhlXwBFA9wJ9v3qpsWInS4Y5ATkjGHrc2C960CVeMPJ5P8OYY9QX7C2inAWvoMyHDoSz5yyrZHtgeb4l_00A2P5J12LhlsNj9IbJ_5q4pKNJrrZptTefN7mW-ydX_YAtgJfNv_b62IATV8hsVlLBzNQUwUBU3pGbYAg3y9cBQ9nGKwcJeYTSrqkDbVx92BhZM4W4IH0KVqW9iGL78Qv6DuPVSXaJaiWL7DJ2Yik',
-      action_label: '查看进度',
-      action_url: '/profile',
-      status: 'unread',
-    },
-    {
-      user_id: userId,
-      category: '健康',
-      title: 'Ginger 健康报告更新',
-      body: '季度驱虫与疫苗接种记录已同步，建议近期增加户外活动时间。',
-      image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB5jGNgx_IpgMzeiX4PvNJWvhIMlnswuDtqWODJixASJc_f2NRENMMDxF4IL_qwlGOag9rT3y1Abu6tzBajJxabi-8jt87eGQNjzJRsu4bTLmNs0MQEoXprDhAm7zLJDyfuuvmKEkWvMcnJM4h6GevTkJ2YTi7R7r7y9T8fTd5dAGFCQ6EKkb2QMBS8GkCssfPPXHNbcn1sRj7lLJIAcej2LAx33ig7WS2cHztS5byYozActoQFHsH1FUQzk4BNXQcDUBt9Bv35uzc',
-      action_label: '查看详情',
-      action_url: '/messages',
-      status: 'unread',
-    },
-    {
-      user_id: userId,
-      category: '活动',
-      title: '领养市集活动预告',
-      body: '本周六下午 2:00 将在中央公园举办大型领养市集。',
-      image: '',
-      action_label: '立即报名',
-      action_url: '/events',
-      status: 'unread',
-    },
-  ]);
+  await sql`
+    INSERT INTO notifications (user_id, category, title, body, image, action_label, action_url, status, metadata)
+    VALUES
+      (${userId}, '申请', 'Luna 的领养申请', '你的领养申请已提交，志愿者会在 24 小时内完成初审。',
+       'https://lh3.googleusercontent.com/aida-public/AB6AXuB8pgi8UcYwYoJoko8KgMwNpRqqmoQ95U6YMYNJNhlXwBFA9wJ9v3qpsWInS4Y5ATkjGHrc2C960CVeMPJ5P8OYY9QX7C2inAWvoMyHDoSz5yyrZHtgeb4l_00A2P5J12LhlsNj9IbJ_5q4pKNJrrZptTefN7mW-ydX_YAtgJfNv_b62IATV8hsVlLBzNQUwUBU3pGbYAg3y9cBQ9nGKwcJeYTSrqkDbVx92BhZM4W4IH0KVqW9iGL78Qv6DuPVSXaJaiWL7DJ2Yik',
+       '查看进度', '/profile', 'unread', '{}'),
+      (${userId}, '健康', 'Ginger 健康报告更新', '季度驱虫与疫苗接种记录已同步，建议近期增加户外活动时间。',
+       'https://lh3.googleusercontent.com/aida-public/AB6AXuB5jGNgx_IpgMzeiX4PvNJWvhIMlnswuDtqWODJixASJc_f2NRENMMDxF4IL_qwlGOag9rT3y1Abu6tzBajJxabi-8jt87eGQNjzJRsu4bTLmNs0MQEoXprDhAm7zLJDyfuuvmKEkWvMcnJM4h6GevTkJ2YTi7R7r7y9T8fTd5dAGFCQ6EKkb2QMBS8GkCssfPPXHNbcn1sRj7lLJIAcej2LAx33ig7WS2cHztS5byYozActoQFHsH1FUQzk4BNXQcDUBt9Bv35uzc',
+       '查看详情', '/messages', 'unread', '{}'),
+      (${userId}, '活动', '领养市集活动预告', '本周六下午 2:00 将在中央公园举办大型领养市集。',
+       '', '立即报名', '/events', 'unread', '{}')
+  `;
 }
 
 app.get('/api/health', (_, res) => {
@@ -417,7 +394,7 @@ app.post('/api/auth/register', async (req, res) => {
 app.get('/api/pets', async (_, res) => {
   try {
     await ensureSeedPets();
-    const pets = await db.select<PetRow>('pets', { select: '*', order: 'created_at.asc' });
+    const { rows: pets } = await sql<PetRow>`SELECT * FROM pets ORDER BY created_at ASC`;
     res.json({ pets });
   } catch (error) {
     sendError(res, error);
@@ -427,7 +404,7 @@ app.get('/api/pets', async (_, res) => {
 app.get('/api/pets/:id', async (req, res) => {
   try {
     await ensureSeedPets();
-    const rows = await db.select<PetRow>('pets', { select: '*', id: `eq.${req.params.id}`, limit: 1 });
+    const { rows } = await sql<PetRow>`SELECT * FROM pets WHERE id = ${req.params.id} LIMIT 1`;
     if (!rows[0]) return res.status(404).json({ error: 'Pet not found' });
     res.json({ pet: rows[0] });
   } catch (error) {
@@ -440,11 +417,9 @@ app.get('/api/favorites', async (req, res) => {
     const userId = String(req.query.userId || '');
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-    const rows = await db.select<{ pet_id: string }>('favorites', {
-      select: 'pet_id',
-      user_id: `eq.${userId}`,
-      order: 'created_at.desc',
-    });
+    const { rows } = await sql<{ pet_id: string }>`
+      SELECT pet_id FROM favorites WHERE user_id = ${userId} ORDER BY created_at DESC
+    `;
     res.json({ favorites: rows.map((row) => row.pet_id) });
   } catch (error) {
     sendError(res, error);
@@ -457,24 +432,18 @@ app.post('/api/favorites/:petId/toggle', async (req, res) => {
     const petId = req.params.petId;
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-    const existing = await db.select<{ pet_id: string }>('favorites', {
-      select: 'pet_id',
-      user_id: `eq.${userId}`,
-      pet_id: `eq.${petId}`,
-      limit: 1,
-    });
-
+    const { rows: existing } = await sql`
+      SELECT pet_id FROM favorites WHERE user_id = ${userId} AND pet_id = ${petId} LIMIT 1
+    `;
     if (existing[0]) {
-      await db.delete('favorites', { user_id: `eq.${userId}`, pet_id: `eq.${petId}` });
+      await sql`DELETE FROM favorites WHERE user_id = ${userId} AND pet_id = ${petId}`;
     } else {
-      await db.insert('favorites', [{ user_id: userId, pet_id: petId }]);
+      await sql`INSERT INTO favorites (user_id, pet_id) VALUES (${userId}, ${petId})`;
     }
 
-    const rows = await db.select<{ pet_id: string }>('favorites', {
-      select: 'pet_id',
-      user_id: `eq.${userId}`,
-      order: 'created_at.desc',
-    });
+    const { rows } = await sql<{ pet_id: string }>`
+      SELECT pet_id FROM favorites WHERE user_id = ${userId} ORDER BY created_at DESC
+    `;
     res.json({ favorites: rows.map((row) => row.pet_id) });
   } catch (error) {
     sendError(res, error);
@@ -486,11 +455,9 @@ app.get('/api/applications', async (req, res) => {
     const userId = String(req.query.userId || '');
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-    const rows = await db.select<ApplicationRow>('applications', {
-      select: '*',
-      user_id: `eq.${userId}`,
-      order: 'created_at.desc',
-    });
+    const { rows } = await sql<ApplicationRow>`
+      SELECT * FROM applications WHERE user_id = ${userId} ORDER BY created_at DESC
+    `;
     res.json({ applications: rows.map(normalizeApplication) });
   } catch (error) {
     sendError(res, error);
@@ -504,29 +471,19 @@ app.post('/api/applications', async (req, res) => {
       return res.status(400).json({ error: 'userId and petId are required' });
     }
 
-    const rows = await db.insert<ApplicationRow>('applications', [
-      {
-        user_id: userId,
-        pet_id: petId,
-        status: '正在审核',
-        date: '刚刚',
-        payload: payload || {},
-      },
-    ]);
+    const { rows } = await sql<ApplicationRow>`
+      INSERT INTO applications (user_id, pet_id, status, date, payload)
+      VALUES (${userId}, ${petId}, '正在审核', '刚刚', ${JSON.stringify(payload || {})}::jsonb)
+      RETURNING *
+    `;
     await runOptionalDbTask(
-      () => db.insert<NotificationRow>('notifications', [
-        {
-          user_id: userId,
-          category: '申请',
-          title: '领养申请已提交',
-          body: '你的申请已经进入审核流程，可以在个人主页查看最新进度。',
-          image: '',
-          action_label: '查看进度',
-          action_url: '/profile',
-          status: 'unread',
-          metadata: { petId },
-        },
-      ]).then(() => undefined),
+      async () => {
+        await sql`
+          INSERT INTO notifications (user_id, category, title, body, image, action_label, action_url, status, metadata)
+          VALUES (${userId}, '申请', '领养申请已提交', '你的申请已经进入审核流程，可以在个人主页查看最新进度。',
+                  '', '查看进度', '/profile', 'unread', ${JSON.stringify({ petId })}::jsonb)
+        `;
+      },
       'Application notification'
     );
     res.json({ application: normalizeApplication(rows[0]) });
@@ -539,9 +496,12 @@ app.get('/api/events', async (req, res) => {
   try {
     await ensureSeedEvents();
     const category = String(req.query.category || '');
-    const query: Record<string, string | number> = { select: '*', order: 'starts_at.asc' };
-    if (category && category !== '全部') query.category = `eq.${category}`;
-    const rows = await db.select<EventRow>('events', query);
+    let rows: EventRow[];
+    if (category && category !== '全部') {
+      ({ rows } = await sql<EventRow>`SELECT * FROM events WHERE category = ${category} ORDER BY starts_at ASC`);
+    } else {
+      ({ rows } = await sql<EventRow>`SELECT * FROM events ORDER BY starts_at ASC`);
+    }
     res.json({ events: rows.map(normalizeEvent) });
   } catch (error) {
     sendError(res, error);
@@ -551,7 +511,7 @@ app.get('/api/events', async (req, res) => {
 app.get('/api/events/:id', async (req, res) => {
   try {
     await ensureSeedEvents();
-    const rows = await db.select<EventRow>('events', { select: '*', id: `eq.${req.params.id}`, limit: 1 });
+    const { rows } = await sql<EventRow>`SELECT * FROM events WHERE id = ${req.params.id} LIMIT 1`;
     if (!rows[0]) return res.status(404).json({ error: 'Event not found' });
     res.json({ event: normalizeEvent(rows[0]) });
   } catch (error) {
@@ -564,25 +524,20 @@ app.post('/api/events/:id/register', async (req, res) => {
     const userId = String(req.body?.userId || '');
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-    const rows = await db.upsert<{ id: string; user_id: string; event_id: string }>(
-      'event_registrations',
-      [{ user_id: userId, event_id: req.params.id }],
-      { on_conflict: 'user_id,event_id' }
-    );
+    const { rows } = await sql<{ id: string; user_id: string; event_id: string }>`
+      INSERT INTO event_registrations (user_id, event_id)
+      VALUES (${userId}, ${req.params.id})
+      ON CONFLICT (user_id, event_id) DO UPDATE SET user_id = EXCLUDED.user_id
+      RETURNING *
+    `;
     await runOptionalDbTask(
-      () => db.insert<NotificationRow>('notifications', [
-        {
-          user_id: userId,
-          category: '活动',
-          title: '活动报名成功',
-          body: '你已成功报名活动，请在活动开始前留意通知。',
-          image: '',
-          action_label: '查看活动',
-          action_url: `/events/${req.params.id}`,
-          status: 'unread',
-          metadata: { eventId: req.params.id },
-        },
-      ]).then(() => undefined),
+      async () => {
+        await sql`
+          INSERT INTO notifications (user_id, category, title, body, image, action_label, action_url, status, metadata)
+          VALUES (${userId}, '活动', '活动报名成功', '你已成功报名活动，请在活动开始前留意通知。',
+                  '', '查看活动', ${`/events/${req.params.id}`}, 'unread', ${JSON.stringify({ eventId: req.params.id })}::jsonb)
+        `;
+      },
       'Event registration notification'
     );
     res.json({ registration: rows[0] });
@@ -595,11 +550,16 @@ app.get('/api/reports', async (req, res) => {
   try {
     await ensureSeedReports();
     const filter = String(req.query.filter || '');
-    const query: Record<string, string | number> = { select: '*', order: 'created_at.desc' };
-    if (filter === '丢失宠物') query.report_type = 'eq.丢失';
-    if (filter === '最新目击') query.report_type = 'eq.目击';
-    if (filter === '重聚故事') query.report_type = 'eq.已团聚';
-    const rows = await db.select<ReportRow>('reports', query);
+    let rows: ReportRow[];
+    if (filter === '丢失宠物') {
+      ({ rows } = await sql<ReportRow>`SELECT * FROM reports WHERE report_type = '丢失' ORDER BY created_at DESC`);
+    } else if (filter === '最新目击') {
+      ({ rows } = await sql<ReportRow>`SELECT * FROM reports WHERE report_type = '目击' ORDER BY created_at DESC`);
+    } else if (filter === '重聚故事') {
+      ({ rows } = await sql<ReportRow>`SELECT * FROM reports WHERE report_type = '已团聚' ORDER BY created_at DESC`);
+    } else {
+      ({ rows } = await sql<ReportRow>`SELECT * FROM reports ORDER BY created_at DESC`);
+    }
     res.json({ reports: rows.map(normalizeReport) });
   } catch (error) {
     sendError(res, error);
@@ -609,7 +569,7 @@ app.get('/api/reports', async (req, res) => {
 app.get('/api/reports/:id', async (req, res) => {
   try {
     await ensureSeedReports();
-    const rows = await db.select<ReportRow>('reports', { select: '*', id: `eq.${req.params.id}`, limit: 1 });
+    const { rows } = await sql<ReportRow>`SELECT * FROM reports WHERE id = ${req.params.id} LIMIT 1`;
     if (!rows[0]) return res.status(404).json({ error: 'Report not found' });
     res.json({ report: normalizeReport(rows[0]) });
   } catch (error) {
@@ -624,36 +584,32 @@ app.post('/api/reports', async (req, res) => {
       return res.status(400).json({ error: 'title, reportType and location are required' });
     }
 
-    const rows = await db.insert<ReportRow>('reports', [
-      {
-        user_id: userId || null,
-        title,
-        report_type: reportType,
-        species: species || '',
-        location,
-        happened_at: happenedAt || new Date().toISOString(),
-        description: description || '',
-        image: image || '',
-        reward: reward ? Number(reward) : null,
-        status: reportType === '已团聚' ? 'resolved' : 'open',
-      },
-    ]);
+    const { rows } = await sql<ReportRow>`
+      INSERT INTO reports (user_id, title, report_type, species, location, happened_at, description, image, reward, status)
+      VALUES (
+        ${userId || null}, ${title}, ${reportType}, ${species || ''}, ${location},
+        ${happenedAt || new Date().toISOString()}, ${description || ''}, ${image || ''},
+        ${reward ? Number(reward) : null},
+        ${reportType === '已团聚' ? 'resolved' : 'open'}
+      )
+      RETURNING *
+    `;
 
     if (userId) {
       await runOptionalDbTask(
-        () => db.insert<NotificationRow>('notifications', [
-          {
-            user_id: userId,
-            category: reportType === '目击' ? '目击' : '进度',
-            title: '报告已发布',
-            body: `${title} 的${reportType}信息已经同步到附近动态。`,
-            image: image || '',
-            action_label: '查看报告',
-            action_url: `/reports/${rows[0].id}`,
-            status: 'unread',
-            metadata: { reportId: rows[0].id },
-          },
-        ]).then(() => undefined),
+        async () => {
+          await sql`
+            INSERT INTO notifications (user_id, category, title, body, image, action_label, action_url, status, metadata)
+            VALUES (
+              ${userId},
+              ${reportType === '目击' ? '目击' : '进度'},
+              '报告已发布',
+              ${`${title} 的${reportType}信息已经同步到附近动态。`},
+              ${image || ''}, '查看报告', ${`/reports/${rows[0].id}`}, 'unread',
+              ${JSON.stringify({ reportId: rows[0].id })}::jsonb
+            )
+          `;
+        },
         'Report notification'
       );
     }
@@ -674,15 +630,28 @@ app.get('/api/notifications', async (req, res) => {
     await ensureNotificationPreferences(userId);
     await ensureSeedNotifications(userId);
 
-    const query: Record<string, string | number> = {
-      select: '*',
-      user_id: `eq.${userId}`,
-      order: 'created_at.desc',
-    };
-    if (status !== 'all') query.status = `eq.${status}`;
-    if (category && category !== '全部') query.category = `eq.${category}`;
+    let rows: NotificationRow[];
+    const hasCategory = category && category !== '全部';
+    const hasStatus = status !== 'all';
 
-    const rows = await db.select<NotificationRow>('notifications', query);
+    if (hasStatus && hasCategory) {
+      ({ rows } = await sql<NotificationRow>`
+        SELECT * FROM notifications WHERE user_id = ${userId} AND status = ${status} AND category = ${category} ORDER BY created_at DESC
+      `);
+    } else if (hasStatus) {
+      ({ rows } = await sql<NotificationRow>`
+        SELECT * FROM notifications WHERE user_id = ${userId} AND status = ${status} ORDER BY created_at DESC
+      `);
+    } else if (hasCategory) {
+      ({ rows } = await sql<NotificationRow>`
+        SELECT * FROM notifications WHERE user_id = ${userId} AND category = ${category} ORDER BY created_at DESC
+      `);
+    } else {
+      ({ rows } = await sql<NotificationRow>`
+        SELECT * FROM notifications WHERE user_id = ${userId} ORDER BY created_at DESC
+      `);
+    }
+
     res.json({ notifications: rows.map(normalizeNotification) });
   } catch (error) {
     sendError(res, error);
@@ -695,11 +664,11 @@ app.post('/api/notifications/:id/archive', async (req, res) => {
     const id = req.params.id;
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-    const rows = await db.update<NotificationRow>(
-      'notifications',
-      { status: 'archived' },
-      { id: `eq.${id}`, user_id: `eq.${userId}` }
-    );
+    const { rows } = await sql<NotificationRow>`
+      UPDATE notifications SET status = 'archived'
+      WHERE id = ${id} AND user_id = ${userId}
+      RETURNING *
+    `;
     if (!rows[0]) return res.status(404).json({ error: 'Notification not found' });
     res.json({ notification: normalizeNotification(rows[0]) });
   } catch (error) {
@@ -713,11 +682,9 @@ app.get('/api/notification-preferences', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
     await ensureNotificationPreferences(userId);
-    const rows = await db.select<NotificationPreferenceRow>('notification_preferences', {
-      select: '*',
-      user_id: `eq.${userId}`,
-      limit: 1,
-    });
+    const { rows } = await sql<NotificationPreferenceRow>`
+      SELECT * FROM notification_preferences WHERE user_id = ${userId} LIMIT 1
+    `;
     res.json({ preferences: normalizeNotificationPreferences(rows[0]) });
   } catch (error) {
     sendError(res, error);
@@ -729,16 +696,15 @@ app.post('/api/notification-preferences', async (req, res) => {
     const { userId, adoptionUpdates, sightingReports } = req.body || {};
     if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-    const rows = await db.upsert<NotificationPreferenceRow>(
-      'notification_preferences',
-      [{
-        user_id: userId,
-        adoption_updates: Boolean(adoptionUpdates),
-        sighting_reports: Boolean(sightingReports),
-        updated_at: new Date().toISOString(),
-      }],
-      { on_conflict: 'user_id' }
-    );
+    const { rows } = await sql<NotificationPreferenceRow>`
+      INSERT INTO notification_preferences (user_id, adoption_updates, sighting_reports, updated_at)
+      VALUES (${userId}, ${Boolean(adoptionUpdates)}, ${Boolean(sightingReports)}, NOW())
+      ON CONFLICT (user_id) DO UPDATE
+        SET adoption_updates = EXCLUDED.adoption_updates,
+            sighting_reports = EXCLUDED.sighting_reports,
+            updated_at = NOW()
+      RETURNING *
+    `;
     res.json({ preferences: normalizeNotificationPreferences(rows[0]) });
   } catch (error) {
     sendError(res, error);
