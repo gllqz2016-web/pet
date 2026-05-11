@@ -745,11 +745,14 @@ app.post('/api/notification-preferences', async (req, res) => {
   }
 });
 
-app.use(express.static(distDir));
-app.get('*', (_, res) => {
-  res.sendFile(path.join(distDir, 'index.html'));
-});
+export default app;
 
-app.listen(port, () => {
-  console.log(`API server listening on http://localhost:${port}`);
-});
+if (!process.env.VERCEL) {
+  app.use(express.static(distDir));
+  app.get('*', (_, res) => {
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+  app.listen(port, () => {
+    console.log(`API server listening on http://localhost:${port}`);
+  });
+}
