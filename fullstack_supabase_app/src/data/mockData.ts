@@ -1,0 +1,93 @@
+export const PETS = [
+  {
+    id: '1',
+    name: '小橘 (Mochi)',
+    age: '2岁',
+    breed: '虎斑猫',
+    gender: '雄性',
+    tags: ['亲人'],
+    location: '广场 2 周',
+    description: '"虽然曾在外流浪，但小橘依然保留着对人类最纯粹的信任。它喜欢在午后阳光下，轻轻蹭你的指尖..."',
+    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCguHNVgj-5KtbZDx9KkJPIhiqvCgjpk8MVUnVo1_x05Wna3dcIzKq40ecOTJ-Lam0FVjCcWwsu_zDFNlfuOyVsQUhVhFlqcZ5rSYCJVcouCGAiv8_eOA8jz4FQmbHw87o7AHVYLKnY4P4jPVNGNhLorIbjZ0DDU2okN8j6vQpoQMwBcWPYyabJXUv0uiekzK8RHaZ8_CgF7t4PxHnX7hinaDbcH-JRdQnCxoBNxEMCE0xgcQyO7wuzE0rcSS06IJcl0pGUM6WVwFU',
+    type: 'cat',
+    urgent: false
+  },
+  {
+    id: '2',
+    name: '豆丁 (Pebble)',
+    age: '1岁',
+    breed: '柯基混血',
+    gender: '雌性',
+    tags: ['活泼'],
+    location: '',
+    description: '"豆丁是个充满活力的小战士，它是广场里的开心果。无论去哪，它都会摇着尾巴紧紧跟随..."',
+    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBRIyiF7syv5TKIH2nq3ncppRvTaBC_neMFjZSL7Rig0Wi1chKIb3DG8_q7MvWr_6L7MV3J4BmxbU8ZXVYT8nkuYsHBdyURy43Rfrj7tKF4z5lL5bmqjVdXlY1m8UWu1IWhSDSYRTmFBDiiUikY6enpuS7GVmD_Bxoq_HpMtfbtFo2K-3fVwfZVVq9CvJQ_jLI7euAK5F7vtfqtCGVT4r3gSdrnlREEay6zuDmDKpCYJ2RNfKpAQOCYb2HXIsR48A9tE3szm4gCwLU',
+    type: 'dog',
+    urgent: true
+  },
+  {
+    id: '3',
+    name: 'Oliver',
+    age: '6个月',
+    breed: '金毛寻回犬',
+    gender: '雄性',
+    tags: ['活泼', '已育'],
+    location: '',
+    description: 'Oliver 是一只非常聪明的金毛，喜欢在草地上奔跑...',
+    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCYMtmq5Ryd-K2-o-xwcVLnavGXwpB8xGjDPdFEkfkLF4T8AGASZez5LNqRMsGcy2TMP32rAxuQlwyq_wEbpZ_yGZgB6GDO2ioO2xyRRYG9_CZVhjG7M54xEKgPPHyRCtVjAFeObTurSa_ld699DOyb_hlw2ygHZpLdm-lOZTNGDhvn8aNhkIzpY1QivByb6Wr6AqIC9Z7kEtPjvrLUjBg-trQpS4clFiIxfJeLG8TNcZ7g7wXo517kG5BhxbxluZPMB_Tbs2jtgnM',
+    type: 'dog',
+    urgent: false
+  },
+  {
+    id: '4',
+    name: 'Misty',
+    age: '3岁',
+    breed: '美国短毛猫',
+    gender: '雌性',
+    tags: ['亲人', '室内'],
+    location: '',
+    description: '安静乖巧，非常适合公寓环境饲养...',
+    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDDuMNYi4KfOTfngzBN6ecXRHbsBmmdI4Yl3GuoacOKIRTkWf-HKlVsojdaFhshwxebFRqKdfcQkHrBZhOXEeIsyjcE-vOYcJWH3OU7kW0KZs4fx-_nsTZCrrF-FV67453ESNypAr_BBN7OQf_ZYRCpdSxFJFDECQ8747n5qhNAiX6KJ4L1VaB3ZzLi_B2Umfh97m5JKeB92WQQrVkqmoAIB0gi4UVWS6QWSV2Vy7g4zNiRJQarchc0rt6aKqmx9GN5edJUgytDFf0',
+    type: 'cat',
+    urgent: false
+  },
+  {
+    id: '5',
+    name: 'Rusty',
+    age: '4岁',
+    breed: '比格犬',
+    gender: '雄性',
+    tags: ['贪吃'],
+    location: '',
+    description: '喜欢探索四周环境，有着灵敏的嗅觉...',
+    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBJRoe07W3s6Gl7PycxzxEZ6Zd6hABoI59pLe-hLgqPpQMrjmdLGWjgdxd_W-cwmvt7E3eSk8hcfOtD4l80tyWkpkDSxCL-ghoeVrQdyD6s95dBkIh3xnD4WZX_RPyqUf6UURY2QbGBktyXSYECTj9-lumjQuH2qnjO3lk30uli6CHa7xvJhyrfFMr-KObdbYGZBDZiuZzTDAx978zWhqwo6JZzOQG4BUrsBO4EdP0_-FHYl1MkidBxJSWy6N-qHd0bfvWuIMgOOMo',
+    type: 'dog',
+    urgent: false
+  },
+  {
+    id: '6',
+    name: 'Luna',
+    age: '2岁',
+    breed: '田园猫',
+    gender: '雌性',
+    tags: ['高冷'],
+    location: '',
+    description: '独立安静，但在熟人面前会展露柔软的一面...',
+    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB8pgi8UcYwYoJoko8KgMwNpRqqmoQ95U6YMYNJNhlXwBFA9wJ9v3qpsWInS4Y5ATkjGHrc2C960CVeMPJ5P8OYY9QX7C2inAWvoMyHDoSz5yyrZHtgeb4l_00A2P5J12LhlsNj9IbJ_5q4pKNJrrZptTefN7mW-ydX_YAtgJfNv_b62IATV8hsVlLBzNQUwUBU3pGbYAg3y9cBQ9nGKwcJeYTSrqkDbVx92BhZM4W4IH0KVqW9iGL78Qv6DuPVSXaJaiWL7DJ2Yik',
+    type: 'cat',
+    urgent: false
+  },
+  {
+    id: 'manda',
+    name: 'Manda',
+    age: '3岁',
+    breed: '金毛混血',
+    gender: '雌性',
+    tags: ['亲人'],
+    location: '',
+    description: '乖巧听话，非常期待有一个新的家庭...',
+    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDh9PKbGgRHpPlxlDyXbZlAJI4KO5PAhpgMs4ROl74c2bj7IfafiP9JbOxQkhjyWC1y6yLy3hK4EhUeO_wNymNaGPVZD3soDiTAfAJ5HqbLOJAgRfDJ-193GJptEL3Kd8uX8VWmKbmXdlkjrQHywpGBI_RmH8W_BbpDGxSEpHdbOTGqm7yKr3mK7DTkFxncH60QT4aejpPjaExy8H21lrEQ6wrPyEcO1Pu8_Qu28Zkmj4lfjqjgEc1mx0GC4E-pplqcVerw4ECDRFk',
+    type: 'dog',
+    urgent: false
+  }
+];
